@@ -5,25 +5,33 @@ import org.apache.kafka.server.policy.CreateTopicPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 public class PatternMatchingCreateTopicPolicy implements CreateTopicPolicy {
 
   private static final String TOPIC_PATTERN_KEY = "ra.topic.pattern";
+  private static final String EXCLUDE_SYS_KEY = "ra.sys.exclude";
   private static final Logger logger = LoggerFactory.getLogger(PatternMatchingCreateTopicPolicy.class);
 
   private Pattern pattern;
+  private Boolean ExcludeSys = true;
 
   @Override
   public void validate(RequestMetadata requestMetadata) throws PolicyViolationException {
     String topic = requestMetadata.topic();
+
     if (pattern != null) {
-      logger.info("Checking '{}' topic name against the pattern configured: {}", topic, pattern);
+      if (ExcludeSys && topic.startsWith("_")) {
+        return;
+      }
+      logger.debug("Checking '{}' topic name against the pattern configured: {}", topic, pattern);
       if (!pattern.matcher(topic).matches()) throw new PolicyViolationException(String.format(
         "Topic name '%s' does not match the pattern '%s'", topic, pattern));
     } else {
-      logger.info("Not checking '{}' topic name against any pattern, because none was configured", topic);
+      logger.warn("Not checking '{}' topic name against any pattern, because none was configured", topic);
     }
   }
 
@@ -39,11 +47,36 @@ public class PatternMatchingCreateTopicPolicy implements CreateTopicPolicy {
       return;
     }
     logger.info("Compiling pattern from value provided: {}", topicPattern);
-    pattern = Pattern.compile(topicPattern.toString());
+    try {
+      pattern = Pattern.compile(topicPattern.toString());
+    }
+    catch(PatternSyntaxException e) {
+      logger.error("pattern compile failed", e);
+    }
+
+    Object excludeSys = configs.get(EXCLUDE_SYS_KEY);
+    try {
+      if (excludeSys!=null) {
+        ExcludeSys = isTrue(excludeSys.toString());
+      }
+    }catch (Exception e) {
+      logger.error("cant convert value {} for key {} to bool" ,excludeSys.toString(), EXCLUDE_SYS_KEY);
+    }
   }
 
   @Override
   public void close() {
     logger.info("Closing {} instance", PatternMatchingCreateTopicPolicy.class);
+  }
+
+  public static boolean isTrue(String result) {
+    String val = result.toLowerCase(Locale.ENGLISH);
+    if (val.equals("true") || val.equals("yes") || val.equals("y") || val.equals("1")) {
+      return true;
+    }
+    if (val.equals("false") || val.equals("no") || val.equals("n") || val.equals("0")) {
+      return false;
+    }
+    throw new IllegalArgumentException("Bad boolean value: " + result);
   }
 }
