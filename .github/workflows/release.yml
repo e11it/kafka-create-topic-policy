@@ -29,8 +29,6 @@ jobs:
     - name: Release and Upload Assets
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref_name }}
-        name: Release ${{ github.ref_name }}
         # Звездочка здесь работает, загрузятся все JAR из target
         files: target/*.jar 
       env:
